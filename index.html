@@ -186,37 +186,50 @@
             const shape = detectShape(imageData);
             const mainColor = new THREE.Color(colors.dominant);
             const secondaryColor = new THREE.Color(colors.secondary);
-            let mainGeometry;
-            switch(shape.type) {
-                case 'round': mainGeometry = new THREE.SphereGeometry(1, 32, 32); break;
-                case 'tall': mainGeometry = new THREE.CylinderGeometry(0.6, 0.8, 2, 32); break;
-                case 'wide': mainGeometry = new THREE.BoxGeometry(2, 0.8, 1); break;
-                default: mainGeometry = new THREE.DodecahedronGeometry(1, 0);
-            }
-            const mainMaterial = new THREE.MeshStandardMaterial({ color: mainColor, roughness: 0.4, metalness: 0.1 });
-            const mainMesh = new THREE.Mesh(mainGeometry, mainMaterial);
-            mainMesh.position.y = 0.5;
+            const points = [];
+            points.push(new THREE.Vector2(0, 0));
+            points.push(new THREE.Vector2(0.35, 0));
+            points.push(new THREE.Vector2(0.38, 0.05));
+            points.push(new THREE.Vector2(0.4, 0.1));
+            points.push(new THREE.Vector2(0.42, 0.3));
+            points.push(new THREE.Vector2(0.42, 0.8));
+            points.push(new THREE.Vector2(0.4, 0.9));
+            points.push(new THREE.Vector2(0.35, 0.95));
+            points.push(new THREE.Vector2(0.25, 1.0));
+            points.push(new THREE.Vector2(0.15, 1.05));
+            points.push(new THREE.Vector2(0.12, 1.2));
+            points.push(new THREE.Vector2(0.12, 1.4));
+            points.push(new THREE.Vector2(0.14, 1.42));
+            points.push(new THREE.Vector2(0.14, 1.45));
+            points.push(new THREE.Vector2(0.12, 1.47));
+            points.push(new THREE.Vector2(0, 1.47));
+            const bottleGeometry = new THREE.LatheGeometry(points, 32);
+            const mainMaterial = new THREE.MeshStandardMaterial({ color: mainColor, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.9 });
+            const mainMesh = new THREE.Mesh(bottleGeometry, mainMaterial);
+            mainMesh.position.y = -0.7;
             group.add(mainMesh);
-            const secondaryMaterial = new THREE.MeshStandardMaterial({ color: secondaryColor, roughness: 0.3, metalness: 0.2 });
-            for (let i = 0; i < 3; i++) {
-                const accentGeo = new THREE.OctahedronGeometry(0.3, 0);
-                const accent = new THREE.Mesh(accentGeo, secondaryMaterial);
-                accent.position.set(Math.cos(i * Math.PI * 2 / 3) * 1.2, 0.5 + Math.sin(i * 0.5) * 0.3, Math.sin(i * Math.PI * 2 / 3) * 1.2);
-                accent.rotation.set(Math.random(), Math.random(), Math.random());
-                group.add(accent);
-            }
-            const wireGeo = mainGeometry.clone();
-            const wireMat = new THREE.MeshBasicMaterial({ color: 0x00d4ff, wireframe: true, transparent: true, opacity: 0.1 });
+            const labelGeometry = new THREE.CylinderGeometry(0.43, 0.43, 0.4, 32, 1, true);
+            const labelMaterial = new THREE.MeshStandardMaterial({ color: secondaryColor, roughness: 0.8, metalness: 0, side: THREE.DoubleSide });
+            const label = new THREE.Mesh(labelGeometry, labelMaterial);
+            label.position.y = -0.2;
+            group.add(label);
+            const liquidGeometry = new THREE.CylinderGeometry(0.38, 0.38, 0.6, 32);
+            const liquidMaterial = new THREE.MeshStandardMaterial({ color: 0x2d1810, roughness: 0.1, metalness: 0.05, transparent: true, opacity: 0.85 });
+            const liquid = new THREE.Mesh(liquidGeometry, liquidMaterial);
+            liquid.position.y = -0.4;
+            group.add(liquid);
+            const wireGeo = bottleGeometry.clone();
+            const wireMat = new THREE.MeshBasicMaterial({ color: 0x00d4ff, wireframe: true, transparent: true, opacity: 0.05 });
             const wireframe = new THREE.Mesh(wireGeo, wireMat);
-            wireframe.position.y = 0.5;
-            wireframe.scale.set(1.02, 1.02, 1.02);
+            wireframe.position.y = -0.7;
+            wireframe.scale.set(1.01, 1.01, 1.01);
             group.add(wireframe);
             const baseGeo = new THREE.CylinderGeometry(1.5, 1.5, 0.1, 32);
-            const baseMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+            const baseMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
             const base = new THREE.Mesh(baseGeo, baseMat);
-            base.position.y = -0.5;
+            base.position.y = -0.75;
             group.add(base);
-            group.userData = { sculptRuntime: { nodes: ['main', 'accent1', 'accent2', 'accent3'], colors: colors, shape: shape } };
+            group.userData = { sculptRuntime: { nodes: ['bottle', 'label', 'liquid', 'base'], colors: colors, shape: shape } };
             return group;
         }
         function extractColors(imageData) {
