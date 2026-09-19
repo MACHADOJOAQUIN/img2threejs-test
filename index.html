@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>img2threejs - Test App</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: #fff; min-height: 100vh; }
+        .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 20px 40px; border-bottom: 1px solid #333; }
+        .header h1 { font-size: 24px; font-weight: 600; }
+        .header h1 span { color: #00d4ff; }
+        .header p { color: #888; margin-top: 5px; font-size: 14px; }
+        .main { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; height: calc(100vh - 100px); }
+        .panel { background: #111; border-radius: 12px; border: 1px solid #222; overflow: hidden; display: flex; flex-direction: column; }
+        .panel-header { padding: 15px 20px; background: #1a1a1a; border-bottom: 1px solid #222; font-weight: 600; font-size: 14px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+        .panel-content { flex: 1; padding: 20px; display: flex; align-items: center; justify-content: center; position: relative; }
+        .upload-zone { border: 2px dashed #333; border-radius: 12px; padding: 40px; text-align: center; cursor: pointer; transition: all 0.3s; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .upload-zone:hover { border-color: #00d4ff; background: rgba(0, 212, 255, 0.05); }
+        .upload-zone.dragover { border-color: #00d4ff; background: rgba(0, 212, 255, 0.1); }
+        .upload-icon { font-size: 48px; margin-bottom: 15px; opacity: 0.5; }
+        .upload-text { color: #666; font-size: 14px; }
+        .upload-text strong { color: #00d4ff; }
+        #imagePreview { max-width: 100%; max-height: 100%; border-radius: 8px; display: none; }
+        #canvas3d { width: 100%; height: 100%; border-radius: 8px; }
+        .controls { padding: 15px 20px; background: #1a1a1a; border-top: 1px solid #222; display: flex; gap: 10px; }
+        button { flex: 1; padding: 12px 20px; border: none; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+        .btn-primary { background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%); color: #000; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0, 212, 255, 0.3); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-secondary { background: #222; color: #fff; border: 1px solid #333; }
+        .btn-secondary:hover { background: #333; }
+        .status { position: absolute; bottom: 20px; left: 20px; right: 20px; padding: 12px 16px; background: rgba(0, 0, 0, 0.8); border-radius: 8px; font-size: 13px; color: #888; display: none; }
+        .status.active { display: block; }
+        .status.error { color: #ff4444; border: 1px solid #ff4444; }
+        .status.success { color: #00ff88; border: 1px solid #00ff88; }
+        .loading { display: none; flex-direction: column; align-items: center; gap: 15px; }
+        .loading.active { display: flex; }
+        .spinner { width: 40px; height: 40px; border: 3px solid #222; border-top-color: #00d4ff; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>img<span>2threejs</span> - Test App</h1>
+        <p>Subí una imagen y generá un modelo 3D procedural con Three.js</p>
+    </div>
+    <div class="main">
+        <div class="panel">
+            <div class="panel-header">📷 Imagen de Referencia</div>
+            <div class="panel-content">
+                <div class="upload-zone" id="uploadZone">
+                    <div class="upload-icon">📁</div>
+                    <div class="upload-text">Arrastrá una imagen acá o <strong>click para seleccionar</strong></div>
+                </div>
+                <img id="imagePreview" alt="Preview">
+                <div class="loading" id="loadingAnalysis"><div class="spinner"></div><div>Analizando imagen...</div></div>
+            </div>
+            <div class="controls">
+                <button class="btn-secondary" id="btnClear">Limpiar</button>
+                <button class="btn-primary" id="btnGenerate" disabled>Generar Modelo 3D</button>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">🎨 Modelo 3D Generado</div>
+            <div class="panel-content">
+                <canvas id="canvas3d"></canvas>
+                <div class="loading" id="loadingGenerate"><div class="spinner"></div><div>Generando modelo procedural...</div></div>
+            </div>
+            <div class="controls">
+                <button class="btn-secondary" id="btnResetView">Reset Vista</button>
+                <button class="btn-secondary" id="btnExport">Exportar JSON</button>
+            </div>
+        </div>
+    </div>
+    <div class="status" id="status"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let uploadedImage = null;
+        let scene, camera, renderer, currentModel = null;
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        const uploadZone = document.getElementById('uploadZone');
+        const imagePreview = document.getElementById('imagePreview');
+        const btnGenerate = document.getElementById('btnGenerate');
+        const btnClear = document.getElementById('btnClear');
+        const btnResetView = document.getElementById('btnResetView');
+        const btnExport = document.getElementById('btnExport');
+        const status = document.getElementById('status');
+        const loadingAnalysis = document.getElementById('loadingAnalysis');
+        const loadingGenerate = document.getElementById('loadingGenerate');
+        const canvas = document.getElementById('canvas3d');
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111111);
+            camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+            camera.position.z = 5;
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+            const backLight = new THREE.DirectionalLight(0x00d4ff, 0.3);
+            backLight.position.set(-5, -5, -5);
+            scene.add(backLight);
+            const gridHelper = new THREE.GridHelper(10, 20, 0x333333, 0x222222);
+            scene.add(gridHelper);
+            canvas.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('mousemove', onMouseMove);
+            canvas.addEventListener('mouseup', onMouseUp);
+            canvas.addEventListener('wheel', onMouseWheel);
+            animate();
+        }
+        function animate() {
+            requestAnimationFrame(animate);
+            if (currentModel && !isDragging) { currentModel.rotation.y += 0.002; }
+            renderer.render(scene, camera);
+        }
+        function onMouseDown(e) { isDragging = true; previousMousePosition = { x: e.clientX, y: e.clientY }; }
+        function onMouseMove(e) {
+            if (!isDragging || !currentModel) return;
+            const deltaMove = { x: e.clientX - previousMousePosition.x, y: e.clientY - previousMousePosition.y };
+            currentModel.rotation.y += deltaMove.x * 0.01;
+            currentModel.rotation.x += deltaMove.y * 0.01;
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        }
+        function onMouseUp() { isDragging = false; }
+        function onMouseWheel(e) {
+            camera.position.z += e.deltaY * 0.01;
+            camera.position.z = Math.max(2, Math.min(15, camera.position.z));
+        }
+        uploadZone.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file'; input.accept = 'image/*';
+            input.onchange = (e) => handleFile(e.target.files[0]);
+            input.click();
+        });
+        uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+        uploadZone.addEventListener('dragleave', () => { uploadZone.classList.remove('dragover'); });
+        uploadZone.addEventListener('drop', (e) => { e.preventDefault(); uploadZone.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); });
+        function handleFile(file) {
+            if (!file || !file.type.startsWith('image/')) { showStatus('Por favor seleccioná una imagen válida', 'error'); return; }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                uploadedImage = new Image();
+                uploadedImage.onload = () => {
+                    uploadZone.classList.add('hidden');
+                    imagePreview.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                    btnGenerate.disabled = false;
+                    showStatus('Imagen cargada. Click "Generar Modelo 3D" para continuar', 'success');
+                };
+                uploadedImage.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        btnGenerate.addEventListener('click', async () => {
+            if (!uploadedImage) return;
+            loadingGenerate.classList.add('active');
+            btnGenerate.disabled = true;
+            await new Promise(r => setTimeout(r, 1500));
+            try {
+                const model = generateModelFromImage(uploadedImage);
+                if (currentModel) scene.remove(currentModel);
+                currentModel = model;
+                scene.add(currentModel);
+                camera.position.set(0, 1, 5);
+                camera.lookAt(0, 0, 0);
+                showStatus('Modelo 3D generado. Arrastrá para rotar, scroll para zoom', 'success');
+            } catch (err) { showStatus('Error generando modelo: ' + err.message, 'error'); }
+            loadingGenerate.classList.remove('active');
+            btnGenerate.disabled = false;
+        });
+        function generateModelFromImage(img) {
+            const group = new THREE.Group();
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 100; canvas.height = 100;
+            ctx.drawImage(img, 0, 0, 100, 100);
+            const imageData = ctx.getImageData(0, 0, 100, 100);
+            const colors = extractColors(imageData);
+            const shape = detectShape(imageData);
+            const mainColor = new THREE.Color(colors.dominant);
+            const secondaryColor = new THREE.Color(colors.secondary);
+            let mainGeometry;
+            switch(shape.type) {
+                case 'round': mainGeometry = new THREE.SphereGeometry(1, 32, 32); break;
+                case 'tall': mainGeometry = new THREE.CylinderGeometry(0.6, 0.8, 2, 32); break;
+                case 'wide': mainGeometry = new THREE.BoxGeometry(2, 0.8, 1); break;
+                default: mainGeometry = new THREE.DodecahedronGeometry(1, 0);
+            }
+            const mainMaterial = new THREE.MeshStandardMaterial({ color: mainColor, roughness: 0.4, metalness: 0.1 });
+            const mainMesh = new THREE.Mesh(mainGeometry, mainMaterial);
+            mainMesh.position.y = 0.5;
+            group.add(mainMesh);
+            const secondaryMaterial = new THREE.MeshStandardMaterial({ color: secondaryColor, roughness: 0.3, metalness: 0.2 });
+            for (let i = 0; i < 3; i++) {
+                const accentGeo = new THREE.OctahedronGeometry(0.3, 0);
+                const accent = new THREE.Mesh(accentGeo, secondaryMaterial);
+                accent.position.set(Math.cos(i * Math.PI * 2 / 3) * 1.2, 0.5 + Math.sin(i * 0.5) * 0.3, Math.sin(i * Math.PI * 2 / 3) * 1.2);
+                accent.rotation.set(Math.random(), Math.random(), Math.random());
+                group.add(accent);
+            }
+            const wireGeo = mainGeometry.clone();
+            const wireMat = new THREE.MeshBasicMaterial({ color: 0x00d4ff, wireframe: true, transparent: true, opacity: 0.1 });
+            const wireframe = new THREE.Mesh(wireGeo, wireMat);
+            wireframe.position.y = 0.5;
+            wireframe.scale.set(1.02, 1.02, 1.02);
+            group.add(wireframe);
+            const baseGeo = new THREE.CylinderGeometry(1.5, 1.5, 0.1, 32);
+            const baseMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+            const base = new THREE.Mesh(baseGeo, baseMat);
+            base.position.y = -0.5;
+            group.add(base);
+            group.userData = { sculptRuntime: { nodes: ['main', 'accent1', 'accent2', 'accent3'], colors: colors, shape: shape } };
+            return group;
+        }
+        function extractColors(imageData) {
+            const colorCounts = {};
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 16) {
+                const r = Math.round(data[i] / 32) * 32;
+                const g = Math.round(data[i + 1] / 32) * 32;
+                const b = Math.round(data[i + 2] / 32) * 32;
+                const key = `${r},${g},${b}`;
+                colorCounts[key] = (colorCounts[key] || 0) + 1;
+            }
+            const sorted = Object.entries(colorCounts).sort((a, b) => b[1] - a[1]);
+            const dominant = sorted[0]?.[0] || '128,128,128';
+            const secondary = sorted[1]?.[0] || '64,64,64';
+            return { dominant: `rgb(${dominant})`, secondary: `rgb(${secondary})`, palette: sorted.slice(0, 5).map(([c]) => `rgb(${c})`) };
+        }
+        function detectShape(imageData) {
+            const data = imageData.data;
+            let minX = 100, maxX = 0, minY = 100, maxY = 0, nonTransparent = 0;
+            for (let y = 0; y < 100; y++) {
+                for (let x = 0; x < 100; x++) {
+                    const i = (y * 100 + x) * 4;
+                    if (data[i + 3] > 128) {
+                        nonTransparent++;
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                    }
+                }
+            }
+            const width = maxX - minX;
+            const height = maxY - minY;
+            const ratio = width / (height || 1);
+            let type = 'default';
+            if (ratio > 1.3) type = 'wide';
+            else if (ratio < 0.7) type = 'tall';
+            else if (nonTransparent > 5000) type = 'round';
+            return { type, width, height, ratio };
+        }
+        btnClear.addEventListener('click', () => {
+            uploadedImage = null;
+            imagePreview.style.display = 'none';
+            imagePreview.src = '';
+            uploadZone.classList.remove('hidden');
+            btnGenerate.disabled = true;
+            if (currentModel) { scene.remove(currentModel); currentModel = null; }
+            camera.position.set(0, 0, 5);
+            status.classList.remove('active');
+        });
+        btnResetView.addEventListener('click', () => {
+            camera.position.set(0, 0, 5);
+            camera.lookAt(0, 0, 0);
+            if (currentModel) currentModel.rotation.set(0, 0, 0);
+        });
+        btnExport.addEventListener('click', () => {
+            if (!currentModel) { showStatus('No hay modelo para exportar', 'error'); return; }
+            const data = { version: '1.0.0', generator: 'img2threejs-test', timestamp: new Date().toISOString(), model: currentModel.userData.sculptRuntime };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'model-spec.json'; a.click();
+            URL.revokeObjectURL(url);
+            showStatus('Modelo exportado como JSON', 'success');
+        });
+        function showStatus(message, type = '') { status.textContent = message; status.className = 'status active ' + type; }
+        window.addEventListener('resize', () => {
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        });
+        initThreeJS();
+    </script>
+</body>
+</html>
